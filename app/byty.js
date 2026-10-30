@@ -79,20 +79,45 @@ export function median(a) {
 
 /* ---------- view state (remembered per phone) ---------- */
 
-export const view = { tab: 'aktivni', lok: '', sort: 'pridano', ter: false, dev: '', disp: [], hod: '', q: '' };
+export const view = { tab: 'aktivni', lok: '', sort: 'pridano', ter: false, dev: '', disp: [], hod: '', plocha: [null, null], cena: [null, null], q: '' };
 try {
   const saved = JSON.parse(localStorage.getItem('nem-view') || 'null');
   if (saved) for (const k of Object.keys(view)) if (k in saved && k !== 'q') view[k] = saved[k];
 } catch (e) { /* storage blocked */ }
 if (!Array.isArray(view.disp)) view.disp = [];
+const okRange = r => Array.isArray(r) && r.length === 2 && r.every(v => v == null || (typeof v === 'number' && isFinite(v)));
+if (!okRange(view.plocha)) view.plocha = [null, null];
+if (!okRange(view.cena)) view.cena = [null, null];
 if (!TABS.some(t => t.id === view.tab)) view.tab = 'aktivni';
 
 export function saveView() {
   try { const { q, ...rest } = view; localStorage.setItem('nem-view', JSON.stringify(rest)); } catch (e) { /* ignore */ }
 }
 
-export const filterCount = () => (view.lok ? 1 : 0) + (view.ter ? 1 : 0) + (view.dev ? 1 : 0) + (view.hod ? 1 : 0) + view.disp.length;
-export function resetFilters() { view.lok = ''; view.ter = false; view.dev = ''; view.hod = ''; view.disp = []; saveView(); }
+export const rangeOn = r => r[0] != null || r[1] != null;
+export const filterCount = () => (view.lok ? 1 : 0) + (view.ter ? 1 : 0) + (view.dev ? 1 : 0) + (view.hod ? 1 : 0) + view.disp.length
+  + (rangeOn(view.plocha) ? 1 : 0) + (rangeOn(view.cena) ? 1 : 0);
+export function resetFilters() { view.lok = ''; view.ter = false; view.dev = ''; view.hod = ''; view.disp = []; view.plocha = [null, null]; view.cena = [null, null]; saveView(); }
+
+/** Slider limits from all apartments: area rounded to 5 m², price to half a million. */
+export function extents(items) {
+  const ps = items.map(it => num(it.plocha)).filter(Boolean), cs = items.map(it => num(it.cena)).filter(Boolean);
+  return {
+    plocha: ps.length ? [Math.floor(Math.min(...ps) / 5) * 5, Math.ceil(Math.max(...ps) / 5) * 5] : [80, 150],
+    cena: cs.length ? [Math.floor(Math.min(...cs) / 5e5) * 5e5, Math.ceil(Math.max(...cs) / 5e5) * 5e5] : [5e6, 16e6]
+  };
+}
+const fmtMil = v => (v / 1e6).toLocaleString('cs-CZ', { maximumFractionDigits: 2 });
+/** "90–110 m²", "od 90 m²", "do 12 mil. Kč". */
+export function rangeText(r, kind) {
+  const f = kind === 'cena' ? fmtMil : v => v.toLocaleString('cs-CZ');
+  const unit = kind === 'cena' ? 'mil. Kč' : 'm²';
+  if (r[0] != null && r[1] != null) return `${f(r[0])}–${f(r[1])} ${unit}`;
+  if (r[0] != null) return `od ${f(r[0])} ${unit}`;
+  if (r[1] != null) return `do ${f(r[1])} ${unit}`;
+  return 'vše';
+}
+const inRange = (v, r) => (r[0] == null || (v != null && v >= r[0])) && (r[1] == null || (v != null && v <= r[1]));
 
 function matchesQuery(it, q) {
   if (!q) return true;
@@ -118,6 +143,8 @@ export function passesBase(it, skip) {
   if (view.lok && skip !== 'lok' && it.lokalita !== view.lok) return false;
   if (!passesRating(it)) return false;
   if (view.ter && !hasTerrace(it)) return false;
+  if (rangeOn(view.plocha) && !inRange(num(it.plocha), view.plocha)) return false;
+  if (rangeOn(view.cena) && !inRange(num(it.cena), view.cena)) return false;
   if (view.dev === 'jen' && !it.odDevelopera) return false;
   if (view.dev === 'bez' && it.odDevelopera) return false;
   if (skip !== 'disp' && view.disp.length && !view.disp.includes(dispKey(it))) return false;

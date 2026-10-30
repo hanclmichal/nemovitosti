@@ -11,7 +11,7 @@ import * as add from './views/add.js';
 import * as settings from './views/settings.js';
 import { applyProfile, openProfiles } from './views/profile.js';
 
-export const APP_VERSION = '1.1.0';
+export const APP_VERSION = '1.2.0';
 
 const routes = [
   { re: /^#?\/?$/, view: list, tab: 'byty' },

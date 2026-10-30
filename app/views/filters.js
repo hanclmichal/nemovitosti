@@ -1,7 +1,10 @@
-// Filter sheet shared by the list and the chart: layout, district, source, terrace.
+// Filter sheet shared by the list and the chart: area and price (slider + exact values), layout,
+// district, source, rating, terrace. The main button shows how many flats match right now.
 import { store } from '../store.js';
-import { view, saveView, resetFilters, filterCount, currentTab, statusOf, passesBase, dispKey, DISP, DISP_LABEL, HOD } from '../byty.js';
+import { view, saveView, resetFilters, filterCount, currentTab, statusOf, passesBase, dispKey, DISP, DISP_LABEL, HOD, extents, rangeText } from '../byty.js';
 import { h, openSheet, closeSheet } from '../ui.js';
+import { plural } from '../format.js';
+import { rangeFilter, plochaOpts, cenaOpts } from './range.js';
 
 export function filterButton(onChange) {
   const n = filterCount();
@@ -9,11 +12,40 @@ export function filterButton(onChange) {
     n ? `Filtry · ${n}` : 'Filtry');
 }
 
-export function openFilters(onChange) {
-  const body = h('div', { class: 'filters' });
-  const changed = () => { saveView(); draw(); onChange(); };
+/** Area and price filters bound to the shared view; used in the sheet and above the chart. */
+export function rangeFilters(onSettled, onLive) {
+  const ext = extents([...store.byty.values()]);
+  return [
+    rangeFilter({ ...plochaOpts(ext), value: view.plocha, text: r => rangeText(r, 'plocha'),
+      onInput: r => { view.plocha = r; onLive && onLive(); },
+      onChange: r => { view.plocha = r; saveView(); onSettled(); } }),
+    rangeFilter({ ...cenaOpts(ext, store.nastaveni), value: view.cena, text: r => rangeText(r, 'cena'),
+      onInput: r => { view.cena = r; onLive && onLive(); },
+      onChange: r => { view.cena = r; saveView(); onSettled(); } })
+  ];
+}
 
-  function draw() {
+export function openFilters(onChange) {
+  const ranges = h('div', { class: 'filters' });
+  const rest = h('div', { class: 'filters' });
+  const body = h('div', { class: 'filters' }, ranges, h('hr', { class: 'sep' }), rest);
+  let showBtn = null;
+  const matching = () => {
+    const tab = currentTab();
+    return [...store.byty.values()].filter(it => tab.test(statusOf(it)) && passesBase(it)).length;
+  };
+  const liveCount = () => {
+    if (!showBtn) return;
+    const n = matching();
+    showBtn.textContent = n ? `Zobrazit ${n} ${plural(n, 'byt', 'byty', 'bytů')}` : 'Nic neodpovídá';
+  };
+  const changed = () => { saveView(); drawRest(); onChange(); };
+
+  function drawRanges() {
+    ranges.replaceChildren(...rangeFilters(() => { drawRest(); onChange(); }, liveCount));
+  }
+
+  function drawRest() {
     const items = [...store.byty.values()];
     const tab = currentTab();
     const pool = items.filter(it => tab.test(statusOf(it)) && passesBase(it, true));
@@ -25,8 +57,9 @@ export function openFilters(onChange) {
       names.map(n => h('option', { value: n, text: n, selected: n === view.lok ? true : null })));
     const dev = h('select', { class: 'field', id: 'f-dev', onchange: ev => { view.dev = ev.target.value; changed(); } },
       [['', 'Všechny nabídky'], ['jen', 'Jen od developerů'], ['bez', 'Bez developerů']].map(([v, l]) => h('option', { value: v, text: l, selected: v === view.dev ? true : null })));
+    showBtn = h('button', { class: 'btn btn--primary', type: 'button', onclick: () => closeSheet() }, 'Hotovo');
 
-    body.replaceChildren(
+    rest.replaceChildren(
       h('div', { class: 'form__row' }, h('span', { class: 'form__label', text: 'Dispozice' }),
         h('div', { class: 'chips' },
           h('button', { class: 'chipbtn', type: 'button', 'aria-pressed': String(!view.disp.length), onclick: () => { view.disp = []; changed(); } }, 'Všechny'),
@@ -46,10 +79,12 @@ export function openFilters(onChange) {
       h('label', { class: 'switch' },
         h('input', { type: 'checkbox', checked: view.ter ? true : null, onchange: ev => { view.ter = ev.target.checked; changed(); } }),
         h('span', { class: 'switch__t' }, h('b', { text: 'Jen s terasou' }))),
-      h('div', { class: 'row-actions' },
-        filterCount() ? h('button', { class: 'btn', type: 'button', onclick: () => { resetFilters(); draw(); onChange(); } }, 'Zrušit filtry') : null,
-        h('button', { class: 'btn btn--primary', type: 'button', onclick: () => closeSheet() }, 'Hotovo')));
+      h('div', { class: 'row-actions row-actions--sticky' },
+        filterCount() ? h('button', { class: 'btn', type: 'button', onclick: () => { resetFilters(); drawRanges(); drawRest(); onChange(); } }, 'Zrušit filtry') : null,
+        showBtn));
+    liveCount();
   }
-  draw();
+  drawRanges();
+  drawRest();
   openSheet('Filtry', body);
 }

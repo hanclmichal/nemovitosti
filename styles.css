@@ -373,3 +373,24 @@ textarea.field { min-height: 96px; resize: vertical; line-height: 1.45; }
 .legend .dot { stroke-width: 2; }
 .legend { gap: 6px 12px; }
 .chart__svg { touch-action: manipulation; cursor: pointer; }
+
+/* ---------- range filter (slider + exact values) ---------- */
+.rng { display: grid; gap: 6px; }
+.rng__head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.rng__val { font-weight: 700; font-size: .9375rem; color: var(--accent); font-variant-numeric: tabular-nums; }
+.rng__val.is-off { color: var(--muted); font-weight: 500; }
+.rng__slider { position: relative; height: 40px; margin: 0 14px; touch-action: none; cursor: pointer; -webkit-user-select: none; user-select: none; }
+.rng__track { position: absolute; left: 0; right: 0; top: 50%; height: 6px; margin-top: -3px; border-radius: 3px; background: var(--line); }
+.rng__fill { position: absolute; top: 0; bottom: 0; border-radius: 3px; background: var(--accent); }
+.rng__thumb { position: absolute; top: 50%; z-index: 2; width: 28px; height: 28px; margin: -14px 0 0 -14px; border-radius: 50%; background: var(--surface); border: 2px solid var(--accent); box-shadow: 0 1px 4px rgba(0, 0, 0, .22); touch-action: none; }
+.rng__thumb:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.rng__fields { display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; align-items: center; }
+.rng__field { display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 42px; padding: 0 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); cursor: text; }
+.rng__field:focus-within { border-color: var(--accent); }
+.rng__field > span { color: var(--muted); font-size: .8125rem; white-space: nowrap; }
+.rng__in { flex: 1; min-width: 0; width: 100%; padding: 8px 0; border: 0; background: none; color: var(--ink); font: inherit; font-size: 16px; font-variant-numeric: tabular-nums; outline: none; }
+.rng__presets { display: flex; flex-wrap: wrap; gap: 6px; }
+.chipbtn--sm { min-height: 32px; padding: 0 10px; font-size: .8125rem; }
+.sep { border: 0; border-top: 1px solid var(--line); margin: 2px 0; }
+.row-actions--sticky { position: sticky; bottom: 0; z-index: 3; padding: 10px 0 4px; background: var(--surface); box-shadow: 0 -8px 12px -10px rgba(0, 0, 0, .25); }
+.win { gap: 14px; }

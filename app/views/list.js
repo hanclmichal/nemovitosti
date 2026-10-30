@@ -1,6 +1,6 @@
 // "Byty": summary, status tabs, search, filters and the list of apartments.
 import { store, lide } from '../store.js';
-import { view, saveView, filtered, TABS, SORTS, statusOf, ACTIVE, kcm2, median, tier, priceDrop, isNew, isGone, hasTerrace, STATUS_SHORT, filterCount, resetFilters, DISP_LABEL, ratingOf, HOD } from '../byty.js';
+import { view, saveView, filtered, TABS, SORTS, statusOf, ACTIVE, kcm2, median, tier, priceDrop, isNew, isGone, hasTerrace, STATUS_SHORT, filterCount, resetFilters, DISP_LABEL, ratingOf, HOD, rangeOn, rangeText } from '../byty.js';
 import { num, mil, kc, timeCz } from '../format.js';
 import { h, put, icon } from '../ui.js';
 import { filterButton } from './filters.js';
@@ -95,6 +95,8 @@ export function render(root, params, nav) {
     }));
     const chips = [];
     const chip = (label, clear) => h('button', { class: 'fchip', type: 'button', onclick: () => { clear(); saveView(); shown = PAGE; update(); } }, label, icon('close', 'ico ico--xs'));
+    if (rangeOn(view.plocha)) chips.push(chip(`Plocha ${rangeText(view.plocha, 'plocha')}`, () => { view.plocha = [null, null]; }));
+    if (rangeOn(view.cena)) chips.push(chip(`Cena ${rangeText(view.cena, 'cena')}`, () => { view.cena = [null, null]; }));
     if (view.lok) chips.push(chip(view.lok, () => { view.lok = ''; }));
     view.disp.forEach(k => chips.push(chip(DISP_LABEL[k] || k, () => { view.disp = view.disp.filter(x => x !== k); })));
     if (view.dev) chips.push(chip(view.dev === 'jen' ? 'Od developerů' : 'Bez developerů', () => { view.dev = ''; }));

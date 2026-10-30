@@ -1,15 +1,15 @@
 // "Graf": two views of the apartments the list currently shows (same status tab, filters and search).
-// Cena × plocha: scatter with a window (area and price range), colour by status, rating or price per m²
+// Cena × plocha: scatter limited by the shared area and price filter, colour by status, rating or price per m²
 // against the median, the median price-per-m² line, and tap-to-select that lists every flat around the spot.
 // Lokality: districts compared by number of flats, how many fit the budget and median price per m².
 import { store } from '../store.js';
 import { view, saveView, filtered, TABS, statusOf, GONE, kcm2, median, avgRating, fmtRating, passesBase, currentTab } from '../byty.js';
 import { num, mil } from '../format.js';
 import { h, put, s } from '../ui.js';
-import { filterButton } from './filters.js';
+import { filterButton, rangeFilters } from './filters.js';
 import { card } from './list.js';
 
-const cs = { mode: 'graf', color: 'stav', plocha: null, cena: null, lokSort: 'budget' };
+const cs = { mode: 'graf', color: 'stav', lokSort: 'budget' };
 try {
   const saved = JSON.parse(localStorage.getItem('nem-chart') || 'null');
   if (saved) for (const k of Object.keys(cs)) if (k in saved) cs[k] = saved[k];
@@ -58,7 +58,6 @@ function niceStep(span, steps) {
   for (const st of steps) if (span / st <= 6) return st;
   return steps[steps.length - 1];
 }
-const rangeVals = (lo, hi, step) => { const out = []; for (let v = lo; v <= hi + 1e-6; v += step) out.push(Math.round(v)); return out; };
 const fmtNum = v => v.toLocaleString('cs-CZ', { maximumFractionDigits: 1 });
 
 export function render(root, params, nav) {
@@ -84,42 +83,20 @@ export function render(root, params, nav) {
     if (!pts.length) { put(body, h('div', { class: 'empty', text: 'V aktuálním výběru nejsou byty s cenou a plochou. Zkus jinou záložku nebo vypni filtry.' })); return; }
     const med = median(pts.map(kcm2).filter(Boolean));
 
-    // window: what part of the chart to show
+    // the chart shows exactly the area and price range of the filter (or the extent of the points without one)
     const xs = pts.map(it => num(it.plocha)), ys = pts.map(it => num(it.cena));
-    const xMin = Math.floor(Math.min(...xs) / 5) * 5, xMax = Math.ceil(Math.max(...xs) / 5) * 5;
-    const yMin = Math.floor(Math.min(...ys) / 5e5) * 5e5, yMax = Math.ceil(Math.max(...ys) / 5e5) * 5e5;
-    const clampPair = (pair, lo, hi) => {
-      let [a, b] = Array.isArray(pair) ? pair : [lo, hi];
-      a = Math.min(Math.max(a ?? lo, lo), hi); b = Math.min(Math.max(b ?? hi, lo), hi);
-      return a <= b ? [a, b] : [b, a];
-    };
-    const [x0, x1] = clampPair(cs.plocha, xMin, xMax);
-    const [y0, y1] = clampPair(cs.cena, yMin, yMax);
-    const setWin = (key, pair) => { cs[key] = pair; saveCs(); sel = []; draw(); };
-    const pick = (vals, cur, fmt, label, onch) => h('select', { class: 'field', 'aria-label': label, onchange: ev => onch(Number(ev.target.value)) },
-      vals.map(v => h('option', { value: String(v), text: fmt(v), selected: v === cur ? true : null })));
-    const xv = rangeVals(xMin, xMax, 5), yv = rangeVals(yMin, yMax, 5e5);
-    const full = x0 === xMin && x1 === xMax && y0 === yMin && y1 === yMax;
-    const budgetHi = Math.min(yMax, Math.max(yMin, Math.ceil(n.budget / 5e5) * 5e5));
+    const x0 = view.plocha[0] ?? Math.floor(Math.min(...xs) / 5) * 5, x1 = view.plocha[1] ?? Math.ceil(Math.max(...xs) / 5) * 5;
+    const y0 = view.cena[0] ?? Math.floor(Math.min(...ys) / 5e5) * 5e5, y1 = view.cena[1] ?? Math.ceil(Math.max(...ys) / 5e5) * 5e5;
     const win = h('section', { class: 'panel win' },
-      h('div', { class: 'win__row' }, h('span', { class: 'win__lbl', text: 'Plocha' }),
-        pick(xv, x0, v => `${v} m²`, 'Plocha od', v => setWin('plocha', [v, x1])), h('span', { class: 'muted', text: '–' }),
-        pick(xv, x1, v => `${v} m²`, 'Plocha do', v => setWin('plocha', [x0, v]))),
-      h('div', { class: 'win__row' }, h('span', { class: 'win__lbl', text: 'Cena' }),
-        pick(yv, y0, v => mil(v, false), 'Cena od', v => setWin('cena', [v, y1])), h('span', { class: 'muted', text: '–' }),
-        pick(yv, y1, v => mil(v, false), 'Cena do', v => setWin('cena', [y0, v]))),
-      h('div', { class: 'win__presets' },
-        h('button', { class: 'btn btn--sm', type: 'button', disabled: full ? true : null, onclick: () => { cs.plocha = null; cs.cena = null; saveCs(); sel = []; draw(); } }, 'Celý rozsah'),
-        h('button', { class: 'btn btn--sm', type: 'button', onclick: () => setWin('cena', [yMin, budgetHi]) }, 'Do budgetu'),
-        h('button', { class: 'btn btn--sm', type: 'button', onclick: () => setWin('cena', [Math.max(yMin, budgetHi - 15e5), Math.min(yMax, Math.ceil(n.mirneNad / 5e5) * 5e5)]) }, 'Kolem budgetu')));
-
-    const inWin = pts.filter(it => { const x = num(it.plocha), y = num(it.cena); return x >= x0 && x <= x1 && y >= y0 && y <= y1; });
+      rangeFilters(() => { sel = []; draw(); }),
+      h('p', { class: 'muted small', text: 'Plocha a cena platí i pro seznam bytů.' }));
+    const inWin = pts;
     sel = sel.filter(id => inWin.some(it => it.id === id));
 
     const colorSeg = h('div', { class: 'seg seg--sm', role: 'group', 'aria-label': 'Barva bodů' },
       h('span', { class: 'win__lbl', text: 'Barva' }),
       COLORS.map(([k, l]) => h('button', { type: 'button', 'aria-pressed': String(cs.color === k), onclick: () => { cs.color = k; saveCs(); draw(); } }, l)));
-    const count = h('p', { class: 'muted small', text: `Zobrazeno ${inWin.length} z ${pts.length} ${pts.length === 1 ? 'bytu' : 'bytů'}. Tečkovaná čára je medián ceny za m², pod ní jsou byty levnější na metr.` });
+    const count = h('p', { class: 'muted small', text: `${pts.length} ${pts.length === 1 ? 'byt' : pts.length <= 4 ? 'byty' : 'bytů'} v grafu. Tečkovaná čára je medián ceny za m², pod ní jsou byty levnější na metr.` });
     const box = h('div', { class: 'chart', role: 'img', 'aria-label': 'Bodový graf ceny a plochy bytů' });
     const selBox = h('section', { class: 'sel' });
     const chartPanel = h('section', { class: 'panel' }, h('div', { class: 'chartbar' }, colorSeg), count, box, h('div', { class: 'legend' }, legend(cs.color, med)));

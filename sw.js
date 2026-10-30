@@ -1,5 +1,5 @@
 // Service worker: keeps the whole app available offline. App files are precached per version.
-const VERSION = 'v1.1.0';
+const VERSION = 'v1.2.0';
 const APP_CACHE = `app-${VERSION}`;
 
 const APP_FILES = [
@@ -22,6 +22,7 @@ const APP_FILES = [
   'app/views/filters.js',
   'app/views/settings.js',
   'app/views/profile.js',
+  'app/views/range.js',
   'icons/icon-180.png',
   'icons/icon-192.png',
   'icons/icon-512.png',

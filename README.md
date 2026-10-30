@@ -10,7 +10,9 @@ Adresa: https://hanclmichal.github.io/nemovitosti/
 
 - **Byty:** souhrn (aktivní nabídky, kolik je v budgetu, medián ceny za m², nové za 7 dní), záložky podle stavu
   (aktivní, vybrané, zamítnuté, stažené a prodané, vše), hledání podle ulice, lokality nebo projektu,
-  filtry (dispozice, lokalita, od developerů, jen s terasou) a řazení.
+  filtry a řazení. Plocha a cena se filtrují přesně: dvojitým posuvníkem, zadáním hodnot „od–do“
+  (cena v milionech, např. 12,5, nebo v korunách) nebo předvolbou („od 90 m²“, „Do budgetu“). Dále dispozice,
+  lokalita, od developerů, hodnocení a jen s terasou. Tlačítko ve filtrech ukazuje, kolik bytů výběru odpovídá.
 - **Profily:** Míša (zelený) a Zuzka (růžová), přepínají se tlačítkem s písmenem v horní liště. Profil určuje barvu aplikace,
   čí hodnocení je „moje“ a podpis u poznámek i v historii změn.
 - **Detail bytu:** cena a její historie, zlevnění, cena vůči budgetu, stav (nový, zajímavý, prohlídka, rezervace,
@@ -18,7 +20,7 @@ Adresa: https://hanclmichal.github.io/nemovitosti/
   z inzerátu a odkazy na portály a Mapy.cz. Při zamítnutí aplikace vyzve napsat důvod do poznámky.
 - **Hodnocení v seznamu:** u každého bytu, řazení „Nejlépe hodnocené“ a filtry „Čeká na moje hodnocení“,
   „Nikdo nehodnotil“, „Průměr 7 a víc“, „Oba 7 a víc“.
-- **Graf – Cena × plocha:** výřez podle plochy a ceny, barva podle stavu, hodnocení nebo ceny za m² vůči mediánu,
+- **Graf – Cena × plocha:** výřez je stejný filtr plochy a ceny jako v seznamu, barva podle stavu, hodnocení nebo ceny za m² vůči mediánu,
   čára mediánu ceny za m², budget a horní hranice. Klepnutí do grafu ukáže pod ním všechny byty z toho místa.
 - **Graf – Lokality:** městské části podle počtu bytů v budgetu, mediánu ceny za m² nebo počtu bytů;
   klepnutím se seznam vyfiltruje na danou lokalitu.
