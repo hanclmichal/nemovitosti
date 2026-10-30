@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Nemovitosti</title>
+<meta name="description" content="Hlídač bytů na prodej v Praze: nabídky z portálů a od developerů, stav a společné poznámky.">
+<meta name="theme-color" content="#eef2ee">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Nemovitosti">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="format-detection" content="telephone=no">
+<meta name="robots" content="noindex">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="stylesheet" href="styles.css">
+<script type="module" src="app/main.js"></script>
+</head>
+<body>
+<header class="bar">
+  <button id="barBack" class="iconbtn" type="button" aria-label="Zpět" hidden></button>
+  <h1 id="barTitle" class="bar__title">Nemovitosti</h1>
+  <button id="syncBtn" class="syncbtn" type="button" data-state="off"><span class="syncbtn__dot" aria-hidden="true"></span><span id="syncText" class="syncbtn__text"></span></button>
+  <a id="gearBtn" class="iconbtn" href="#/nastaveni" aria-label="Nastavení"></a>
+</header>
+<main id="view" class="view"></main>
+<nav class="tabs" aria-label="Hlavní navigace">
+  <a href="#/byty" data-tab="byty"><svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg><span>Byty</span></a>
+  <a href="#/graf" data-tab="graf"><svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="M4 20h16M4 20V4M8.5 15.5h.01M12 11h.01M16 13h.01M18.5 7.5h.01M10.5 8h.01"/></svg><span>Graf</span></a>
+  <a href="#/pridat" data-tab="pridat"><svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>Přidat</span></a>
+</nav>
+<div id="update" class="update" role="status" hidden><span>Je k dispozici nová verze aplikace.</span><button type="button" class="btn btn--sm btn--primary">Načíst</button></div>
+<noscript><p style="padding:24px">Aplikace potřebuje zapnutý JavaScript.</p></noscript>
+</body>
+</html>

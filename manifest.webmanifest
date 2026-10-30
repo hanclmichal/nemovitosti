@@ -1,0 +1,16 @@
+{
+  "name": "Nemovitosti",
+  "short_name": "Nemovitosti",
+  "description": "Hlídač bytů na prodej v Praze: nabídky z portálů a od developerů, stav a společné poznámky.",
+  "lang": "cs",
+  "start_url": "./#/byty",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#eef2ee",
+  "theme_color": "#eef2ee",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
