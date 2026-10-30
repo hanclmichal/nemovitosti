@@ -1,6 +1,6 @@
 // "Byty": summary, status tabs, search, filters and the list of apartments.
-import { store } from '../store.js';
-import { view, saveView, filtered, TABS, SORTS, statusOf, ACTIVE, kcm2, median, tier, priceDrop, isNew, isGone, hasTerrace, STATUS_SHORT, filterCount, resetFilters, DISP_LABEL } from '../byty.js';
+import { store, lide } from '../store.js';
+import { view, saveView, filtered, TABS, SORTS, statusOf, ACTIVE, kcm2, median, tier, priceDrop, isNew, isGone, hasTerrace, STATUS_SHORT, filterCount, resetFilters, DISP_LABEL, ratingOf, HOD } from '../byty.js';
 import { num, mil, kc, timeCz } from '../format.js';
 import { h, put, icon } from '../ui.js';
 import { filterButton } from './filters.js';
@@ -27,6 +27,9 @@ export function card(it, n) {
   if (hasTerrace(it)) badges.push(h('span', { class: 'badge', text: 'Terasa' }));
   if (it.odDevelopera) badges.push(h('span', { class: 'badge badge--dev', text: it.developer ? `Developer · ${it.developer}` : 'Od developera' }));
   const loc = [it.lokalita, it.ulice, it.projekt ? it.projekt + (it.oznaceni ? ' ' + it.oznaceni : '') : null].filter(Boolean).join(', ');
+  const rates = lide().map(pp => ({ pp, v: ratingOf(it, pp.jmeno) })).filter(x => x.v != null)
+    .map(({ pp, v }) => h('span', { class: `rate pc--${pp.barva}`, title: `${pp.jmeno}: ${v}/10` }, pp.jmeno.slice(0, 1), h('b', { text: String(v) })));
+  const sig = it.naseUpravil && it.naseUpravil.kdo ? it.naseUpravil.kdo : null;
   return h('a', { class: 'byt' + (isGone(it) ? ' is-gone' : '') + (st === 'zamitnuto' ? ' is-rejected' : ''), href: `#/byt/${it.id}` },
     h('div', { class: 'byt__row' },
       h('span', { class: 'byt__title', text: [it.dispozice || 'Byt', p ? `${p.toLocaleString('cs-CZ')} m²` : null].filter(Boolean).join(' · ') }),
@@ -35,9 +38,9 @@ export function card(it, n) {
       h('span', { class: 'byt__loc', text: loc || 'lokalita neuvedena' }),
       pm ? h('span', { class: 'byt__pm num', text: `${kc(pm)}/m²` }) : null),
     h('div', { class: 'byt__row byt__row--meta' },
-      h('div', { class: 'badges' }, badges),
+      h('div', { class: 'badges' }, rates.length ? h('span', { class: 'rates' }, rates) : null, badges),
       t ? h('span', { class: `tier tier--${t.cls}`, text: t.text }) : null),
-    it.nase ? h('p', { class: 'byt__note' }, h('span', { class: 'byt__noteh', text: it.upravil && it.upravil.kdo ? `${it.upravil.kdo}: ` : 'Poznámka: ' }), it.nase) : null);
+    it.nase ? h('p', { class: 'byt__note' }, h('span', { class: 'byt__noteh', text: sig ? `${sig}: ` : st === 'zamitnuto' ? 'Proč ne: ' : 'Poznámka: ' }), it.nase) : null);
 }
 
 export function render(root, params, nav) {
@@ -96,6 +99,7 @@ export function render(root, params, nav) {
     view.disp.forEach(k => chips.push(chip(DISP_LABEL[k] || k, () => { view.disp = view.disp.filter(x => x !== k); })));
     if (view.dev) chips.push(chip(view.dev === 'jen' ? 'Od developerů' : 'Bez developerů', () => { view.dev = ''; }));
     if (view.ter) chips.push(chip('S terasou', () => { view.ter = false; }));
+    if (view.hod) chips.push(chip((HOD.find(x => x[0] === view.hod) || ['', 'Hodnocení'])[1], () => { view.hod = ''; }));
     if (filterCount() > 1) chips.push(h('button', { class: 'linkish', type: 'button', onclick: () => { resetFilters(); shown = PAGE; update(); } }, 'Zrušit vše'));
     put(active, chips);
     active.hidden = !chips.length;

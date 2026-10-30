@@ -1,5 +1,6 @@
 // Apartments: statuses, price tiers, filters and sorting shared by the list and the chart.
 import { num, norm, daysBetween } from './format.js';
+import { store } from './store.js';
 
 export const STATUS = [
   ['novy', 'Nový'], ['zajimavy', 'Zajímavý'], ['prohlidka', 'Prohlídka'], ['rezervace', 'Rezervace'],
@@ -18,13 +19,28 @@ export const TABS = [
   { id: 'vse', label: 'Vše', test: () => true }
 ];
 
-export const SORTS = [['pridano', 'Nejnovější'], ['cena', 'Nejlevnější'], ['kcm2', 'Cena za m²'], ['plocha', 'Největší']];
+export const SORTS = [['pridano', 'Nejnovější'], ['cena', 'Nejlevnější'], ['kcm2', 'Cena za m²'], ['plocha', 'Největší'], ['hodnoceni', 'Nejlépe hodnocené']];
 
 export const statusOf = it => STATUS_LABEL[it.status] ? it.status : 'novy';
 export const hasTerrace = it => it.terasa === true;
 export const isGone = it => GONE.includes(statusOf(it));
 export const kcm2 = it => { const c = num(it.cena), p = num(it.plocha); return c && p ? c / p : null; };
 export const isNew = it => !!it.pridano && daysBetween(it.pridano) <= 3 && !isGone(it);
+
+/* ---------- ratings (1–10 per person) ---------- */
+
+export function ratingOf(it, jmeno) {
+  const v = it.hodnoceni && typeof it.hodnoceni === 'object' ? Number(it.hodnoceni[jmeno]) : NaN;
+  return Number.isInteger(v) && v >= 1 && v <= 10 ? v : null;
+}
+/** Average of the ratings given (any person), or null. */
+export function avgRating(it) {
+  if (!it.hodnoceni || typeof it.hodnoceni !== 'object') return null;
+  const vals = Object.keys(it.hodnoceni).map(k => ratingOf(it, k)).filter(v => v != null);
+  return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+}
+export const fmtRating = v => (Math.round(v * 10) / 10).toLocaleString('cs-CZ');
+export const HOD = [['', 'Všechny'], ['cekam', 'Čeká na moje hodnocení'], ['nehodnocene', 'Nikdo nehodnotil'], ['7plus', 'Průměr 7 a víc'], ['shoda', 'Oba 7 a víc']];
 
 export function priceDrop(it) {
   const h = Array.isArray(it.historie) ? it.historie : [];
@@ -63,7 +79,7 @@ export function median(a) {
 
 /* ---------- view state (remembered per phone) ---------- */
 
-export const view = { tab: 'aktivni', lok: '', sort: 'pridano', ter: false, dev: '', disp: [], q: '' };
+export const view = { tab: 'aktivni', lok: '', sort: 'pridano', ter: false, dev: '', disp: [], hod: '', q: '' };
 try {
   const saved = JSON.parse(localStorage.getItem('nem-view') || 'null');
   if (saved) for (const k of Object.keys(view)) if (k in saved && k !== 'q') view[k] = saved[k];
@@ -75,8 +91,8 @@ export function saveView() {
   try { const { q, ...rest } = view; localStorage.setItem('nem-view', JSON.stringify(rest)); } catch (e) { /* ignore */ }
 }
 
-export const filterCount = () => (view.lok ? 1 : 0) + (view.ter ? 1 : 0) + (view.dev ? 1 : 0) + view.disp.length;
-export function resetFilters() { view.lok = ''; view.ter = false; view.dev = ''; view.disp = []; saveView(); }
+export const filterCount = () => (view.lok ? 1 : 0) + (view.ter ? 1 : 0) + (view.dev ? 1 : 0) + (view.hod ? 1 : 0) + view.disp.length;
+export function resetFilters() { view.lok = ''; view.ter = false; view.dev = ''; view.hod = ''; view.disp = []; saveView(); }
 
 function matchesQuery(it, q) {
   if (!q) return true;
@@ -84,13 +100,27 @@ function matchesQuery(it, q) {
   return norm(q).split(/\s+/).filter(Boolean).every(w => hay.includes(w));
 }
 
-/** Filters other than the status tab; skipDisp leaves out the layout filter (for its own counts). */
-export function passesBase(it, skipDisp) {
-  if (view.lok && it.lokalita !== view.lok) return false;
+function passesRating(it) {
+  if (!view.hod) return true;
+  if (view.hod === 'cekam') return store.kdo ? ratingOf(it, store.kdo) == null : avgRating(it) == null;
+  if (view.hod === 'nehodnocene') return avgRating(it) == null;
+  if (view.hod === '7plus') { const a = avgRating(it); return a != null && a >= 7; }
+  if (view.hod === 'shoda') {
+    const vals = Object.keys(it.hodnoceni || {}).map(k => ratingOf(it, k)).filter(v => v != null);
+    return vals.length >= 2 && vals.every(v => v >= 7);
+  }
+  return true;
+}
+
+/** Filters other than the status tab; skip: 'disp' or 'lok' leaves that filter out (for its own counts). */
+export function passesBase(it, skip) {
+  if (skip === true) skip = 'disp';
+  if (view.lok && skip !== 'lok' && it.lokalita !== view.lok) return false;
+  if (!passesRating(it)) return false;
   if (view.ter && !hasTerrace(it)) return false;
   if (view.dev === 'jen' && !it.odDevelopera) return false;
   if (view.dev === 'bez' && it.odDevelopera) return false;
-  if (!skipDisp && view.disp.length && !view.disp.includes(dispKey(it))) return false;
+  if (skip !== 'disp' && view.disp.length && !view.disp.includes(dispKey(it))) return false;
   if (!matchesQuery(it, view.q)) return false;
   return true;
 }
@@ -105,6 +135,7 @@ export function filtered(items) {
     if (key === 'cena') return (num(a.cena) || 9e15) - (num(b.cena) || 9e15);
     if (key === 'kcm2') return (kcm2(a) || 9e15) - (kcm2(b) || 9e15);
     if (key === 'plocha') return (num(b.plocha) || 0) - (num(a.plocha) || 0);
+    if (key === 'hodnoceni') return (avgRating(b) ?? -1) - (avgRating(a) ?? -1) || String(b.pridano || '').localeCompare(String(a.pridano || ''));
     return String(b.pridano || '').localeCompare(String(a.pridano || '')) || (num(a.cena) || 0) - (num(b.cena) || 0);
   });
   return list;

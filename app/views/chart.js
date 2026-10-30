@@ -1,67 +1,247 @@
-// "Graf": price against floor area for the apartments the list currently shows.
+// "Graf": two views of the apartments the list currently shows (same status tab, filters and search).
+// Cena × plocha: scatter with a window (area and price range), colour by status, rating or price per m²
+// against the median, the median price-per-m² line, and tap-to-select that lists every flat around the spot.
+// Lokality: districts compared by number of flats, how many fit the budget and median price per m².
 import { store } from '../store.js';
-import { view, saveView, filtered, TABS, statusOf, hasTerrace, GONE } from '../byty.js';
+import { view, saveView, filtered, TABS, statusOf, GONE, kcm2, median, avgRating, fmtRating, passesBase, currentTab } from '../byty.js';
 import { num, mil } from '../format.js';
 import { h, put, s } from '../ui.js';
 import { filterButton } from './filters.js';
+import { card } from './list.js';
+
+const cs = { mode: 'graf', color: 'stav', plocha: null, cena: null, lokSort: 'budget' };
+try {
+  const saved = JSON.parse(localStorage.getItem('nem-chart') || 'null');
+  if (saved) for (const k of Object.keys(cs)) if (k in saved) cs[k] = saved[k];
+} catch (e) { /* storage blocked */ }
+const saveCs = () => { try { localStorage.setItem('nem-chart', JSON.stringify(cs)); } catch (e) { /* ignore */ } };
+let sel = [];   // ids picked by the last tap
+let lokAll = false;  // show every district, not just the first ones
+const LOK_TOP = 15, LOK_MIN = 3;
+
+const MODES = [['graf', 'Cena × plocha'], ['lokality', 'Lokality']];
+const COLORS = [['stav', 'Stav'], ['hodnoceni', 'Hodnocení'], ['kcm2', 'Cena za m²']];
+const LOK_SORTS = [['budget', 'Nejvíc v budgetu'], ['kcm2', 'Nejlevnější m²'], ['pocet', 'Nejvíc bytů']];
+const STATUS_DOT = { zajimavy: 'dot--fill', prohlidka: 'dot--info', rezervace: 'dot--warn', zamitnuto: 'dot--rej' };
+
+function dotClass(it, mode, med) {
+  if (mode === 'hodnoceni') {
+    const a = avgRating(it);
+    if (a == null) return 'dot--none';
+    return a < 5 ? 'dot--r1' : a < 7 ? 'dot--r2' : a < 8.5 ? 'dot--r3' : 'dot--r4';
+  }
+  if (mode === 'kcm2') {
+    const v = kcm2(it);
+    if (!v || !med) return 'dot--mid';
+    const d = v / med - 1;
+    return d <= -0.1 ? 'dot--cheap' : d >= 0.1 ? 'dot--dear' : 'dot--mid';
+  }
+  const st = statusOf(it);
+  return GONE.includes(st) ? 'dot--gone' : STATUS_DOT[st] || 'dot--ring';
+}
+// interesting points are drawn last, so they stay on top
+function rank(it, mode) {
+  if (mode === 'hodnoceni') return avgRating(it) ?? -1;
+  const st = statusOf(it);
+  return GONE.includes(st) || st === 'zamitnuto' ? 0 : st === 'novy' ? 1 : 2;
+}
+
+function legend(mode, med) {
+  const item = (cls, text) => h('span', { class: 'lg' }, s('svg', { width: 14, height: 14, viewBox: '0 0 14 14', 'aria-hidden': 'true' }, s('circle', { cx: 7, cy: 7, r: 5, class: 'dot ' + cls })), text);
+  if (mode === 'hodnoceni') return [item('dot--none', 'nehodnoceno'), item('dot--r1', 'průměr pod 5'), item('dot--r2', '5–6,9'), item('dot--r3', '7–8,4'), item('dot--r4', '8,5 a víc')];
+  if (mode === 'kcm2') return [item('dot--cheap', 'o 10 % a víc levnější za m² než medián'), item('dot--mid', 'kolem mediánu'), item('dot--dear', 'o 10 % a víc dražší'),
+    med ? h('span', { class: 'lg muted', text: `medián ${Math.round(med / 1000).toLocaleString('cs-CZ')} tis. Kč/m²` }) : null];
+  return [item('dot--ring', 'nový'), item('dot--fill', 'zajímavý'), item('dot--info', 'prohlídka'), item('dot--warn', 'rezervace'), item('dot--rej', 'zamítnutý'), item('dot--gone', 'stažený, prodaný')];
+}
+
+function niceStep(span, steps) {
+  for (const st of steps) if (span / st <= 6) return st;
+  return steps[steps.length - 1];
+}
+const rangeVals = (lo, hi, step) => { const out = []; for (let v = lo; v <= hi + 1e-6; v += step) out.push(Math.round(v)); return out; };
+const fmtNum = v => v.toLocaleString('cs-CZ', { maximumFractionDigits: 1 });
 
 export function render(root, params, nav) {
-  nav.setTitle('Cena podle plochy');
+  nav.setTitle('Graf');
+  const modes = h('div', { class: 'modeseg', role: 'group', 'aria-label': 'Pohled' });
   const tools = h('div', { class: 'tools' });
   const tabs = h('div', { class: 'stabs', role: 'group', 'aria-label': 'Stav' });
-  const sub = h('p', { class: 'muted small' });
-  const box = h('div', { class: 'chart', role: 'img', 'aria-label': 'Bodový graf ceny a plochy bytů' });
-  const legend = h('div', { class: 'legend' },
-    h('span', null, h('i', { class: 'sw sw--fill' }), 's terasou'),
-    h('span', null, h('i', { class: 'sw sw--ring' }), 'bez terasy'),
-    h('span', null, h('i', { class: 'sw sw--pick' }), 'vybrané'),
-    h('span', null, h('i', { class: 'sw sw--gone' }), 'stažené a prodané'));
-  root.append(h('section', { class: 'panel' }, tools, tabs, sub, box, legend));
+  const body = h('div', { class: 'detail' });
+  root.append(modes, tools, tabs, body);
 
-  function draw() {
-    const n = store.nastaveni;
-    put(tools, filterButton(draw));
+  function drawHead() {
+    put(modes, MODES.map(([k, l]) => h('button', { type: 'button', 'aria-pressed': String(cs.mode === k), onclick: () => { cs.mode = k; saveCs(); draw(); } }, l)));
+    put(tools, filterButton(draw), view.q ? h('span', { class: 'muted small', text: `hledání „${view.q}“` }) : null);
     const items = [...store.byty.values()];
-    put(tabs, TABS.map(t => h('button', { class: 'stab', type: 'button', 'aria-pressed': String(view.tab === t.id), onclick: () => { view.tab = t.id; saveView(); draw(); } },
+    put(tabs, TABS.map(t => h('button', { class: 'stab', type: 'button', 'aria-pressed': String(view.tab === t.id), onclick: () => { view.tab = t.id; saveView(); sel = []; draw(); } },
       t.label, h('span', { class: 'stab__c', text: String(items.filter(it => t.test(statusOf(it))).length) }))));
-    const pts = filtered(items).filter(it => num(it.cena) && num(it.plocha));
-    sub.textContent = `${pts.length} ${pts.length === 1 ? 'byt' : pts.length >= 2 && pts.length <= 4 ? 'byty' : 'bytů'}${view.q ? ` (hledání „${view.q}“)` : ''}. Plná čára je budget, přerušovaná horní hranice. Klepnutím na bod otevřeš byt.`;
-    if (!pts.length) { put(box, h('p', { class: 'empty', text: 'V aktuálním výběru nejsou byty s cenou a plochou.' })); return; }
+  }
 
-    const W = Math.max(300, box.clientWidth || 360), H = Math.round(Math.min(520, Math.max(300, W * 0.95)));
-    const m = { l: 40, r: 10, t: 24, b: 32 };
-    const xs = pts.map(p => num(p.plocha)), ys = pts.map(p => num(p.cena));
-    const x0 = Math.floor((Math.min(...xs, 80) - 5) / 10) * 10, x1 = Math.ceil((Math.max(...xs) + 5) / 10) * 10;
-    const y0 = Math.max(0, Math.floor(Math.min(...ys, n.budget) / 1e6 - 1) * 1e6), y1 = Math.ceil(Math.max(...ys, n.strop) / 1e6 + 0.5) * 1e6;
-    const X = v => m.l + (v - x0) / (x1 - x0) * (W - m.l - m.r);
-    const Y = v => H - m.b - (v - y0) / (y1 - y0) * (H - m.t - m.b);
+  /* ---------- Cena × plocha ---------- */
+  function drawGraf() {
+    const n = store.nastaveni;
+    const pts = filtered([...store.byty.values()]).filter(it => num(it.cena) && num(it.plocha));
+    if (!pts.length) { put(body, h('div', { class: 'empty', text: 'V aktuálním výběru nejsou byty s cenou a plochou. Zkus jinou záložku nebo vypni filtry.' })); return; }
+    const med = median(pts.map(kcm2).filter(Boolean));
+
+    // window: what part of the chart to show
+    const xs = pts.map(it => num(it.plocha)), ys = pts.map(it => num(it.cena));
+    const xMin = Math.floor(Math.min(...xs) / 5) * 5, xMax = Math.ceil(Math.max(...xs) / 5) * 5;
+    const yMin = Math.floor(Math.min(...ys) / 5e5) * 5e5, yMax = Math.ceil(Math.max(...ys) / 5e5) * 5e5;
+    const clampPair = (pair, lo, hi) => {
+      let [a, b] = Array.isArray(pair) ? pair : [lo, hi];
+      a = Math.min(Math.max(a ?? lo, lo), hi); b = Math.min(Math.max(b ?? hi, lo), hi);
+      return a <= b ? [a, b] : [b, a];
+    };
+    const [x0, x1] = clampPair(cs.plocha, xMin, xMax);
+    const [y0, y1] = clampPair(cs.cena, yMin, yMax);
+    const setWin = (key, pair) => { cs[key] = pair; saveCs(); sel = []; draw(); };
+    const pick = (vals, cur, fmt, label, onch) => h('select', { class: 'field', 'aria-label': label, onchange: ev => onch(Number(ev.target.value)) },
+      vals.map(v => h('option', { value: String(v), text: fmt(v), selected: v === cur ? true : null })));
+    const xv = rangeVals(xMin, xMax, 5), yv = rangeVals(yMin, yMax, 5e5);
+    const full = x0 === xMin && x1 === xMax && y0 === yMin && y1 === yMax;
+    const budgetHi = Math.min(yMax, Math.max(yMin, Math.ceil(n.budget / 5e5) * 5e5));
+    const win = h('section', { class: 'panel win' },
+      h('div', { class: 'win__row' }, h('span', { class: 'win__lbl', text: 'Plocha' }),
+        pick(xv, x0, v => `${v} m²`, 'Plocha od', v => setWin('plocha', [v, x1])), h('span', { class: 'muted', text: '–' }),
+        pick(xv, x1, v => `${v} m²`, 'Plocha do', v => setWin('plocha', [x0, v]))),
+      h('div', { class: 'win__row' }, h('span', { class: 'win__lbl', text: 'Cena' }),
+        pick(yv, y0, v => mil(v, false), 'Cena od', v => setWin('cena', [v, y1])), h('span', { class: 'muted', text: '–' }),
+        pick(yv, y1, v => mil(v, false), 'Cena do', v => setWin('cena', [y0, v]))),
+      h('div', { class: 'win__presets' },
+        h('button', { class: 'btn btn--sm', type: 'button', disabled: full ? true : null, onclick: () => { cs.plocha = null; cs.cena = null; saveCs(); sel = []; draw(); } }, 'Celý rozsah'),
+        h('button', { class: 'btn btn--sm', type: 'button', onclick: () => setWin('cena', [yMin, budgetHi]) }, 'Do budgetu'),
+        h('button', { class: 'btn btn--sm', type: 'button', onclick: () => setWin('cena', [Math.max(yMin, budgetHi - 15e5), Math.min(yMax, Math.ceil(n.mirneNad / 5e5) * 5e5)]) }, 'Kolem budgetu')));
+
+    const inWin = pts.filter(it => { const x = num(it.plocha), y = num(it.cena); return x >= x0 && x <= x1 && y >= y0 && y <= y1; });
+    sel = sel.filter(id => inWin.some(it => it.id === id));
+
+    const colorSeg = h('div', { class: 'seg seg--sm', role: 'group', 'aria-label': 'Barva bodů' },
+      h('span', { class: 'win__lbl', text: 'Barva' }),
+      COLORS.map(([k, l]) => h('button', { type: 'button', 'aria-pressed': String(cs.color === k), onclick: () => { cs.color = k; saveCs(); draw(); } }, l)));
+    const count = h('p', { class: 'muted small', text: `Zobrazeno ${inWin.length} z ${pts.length} ${pts.length === 1 ? 'bytu' : 'bytů'}. Tečkovaná čára je medián ceny za m², pod ní jsou byty levnější na metr.` });
+    const box = h('div', { class: 'chart', role: 'img', 'aria-label': 'Bodový graf ceny a plochy bytů' });
+    const selBox = h('section', { class: 'sel' });
+    const chartPanel = h('section', { class: 'panel' }, h('div', { class: 'chartbar' }, colorSeg), count, box, h('div', { class: 'legend' }, legend(cs.color, med)));
+    put(body, win, chartPanel, selBox);
+
+    // plot
+    const W = Math.max(300, box.clientWidth || 360), H = Math.round(Math.min(560, Math.max(320, W * 1.05)));
+    const m = { l: 44, r: 12, t: 22, b: 34 };
+    const padX = Math.max(1, (x1 - x0) * 0.04), padY = Math.max(1e5, (y1 - y0) * 0.05);
+    const dx0 = x0 - padX, dx1 = x1 + padX, dy0 = Math.max(0, y0 - padY), dy1 = y1 + padY;
+    const X = v => m.l + (v - dx0) / (dx1 - dx0) * (W - m.l - m.r);
+    const Y = v => H - m.b - (v - dy0) / (dy1 - dy0) * (H - m.t - m.b);
     const svg = s('svg', { width: W, height: H, viewBox: `0 0 ${W} ${H}`, class: 'chart__svg' });
-    const xStep = (x1 - x0) > 120 ? 40 : (x1 - x0) > 60 ? 20 : 10;
-    for (let v = x0; v <= x1; v += xStep) {
+    svg.append(s('defs', null, s('clipPath', { id: 'plot' }, s('rect', { x: m.l, y: m.t, width: W - m.l - m.r, height: H - m.t - m.b }))));
+    const xStep = niceStep(dx1 - dx0, [5, 10, 20, 40, 50]);
+    for (let v = Math.ceil(dx0 / xStep) * xStep; v <= dx1; v += xStep) {
       svg.append(s('line', { x1: X(v), x2: X(v), y1: m.t, y2: H - m.b, class: 'grid' }), s('text', { x: X(v), y: H - m.b + 16, 'text-anchor': 'middle', class: 'axis' }, String(v)));
     }
-    const ySpan = (y1 - y0) / 1e6, yStep = ySpan > 16 ? 4e6 : ySpan > 8 ? 2e6 : 1e6;
-    for (let v = y0; v <= y1; v += yStep) {
-      svg.append(s('line', { x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v), class: 'grid' }), s('text', { x: m.l - 6, y: Y(v) + 4, 'text-anchor': 'end', class: 'axis' }, String(v / 1e6)));
+    const yStep = niceStep(dy1 - dy0, [2.5e5, 5e5, 1e6, 2e6, 4e6]);
+    for (let v = Math.ceil(dy0 / yStep) * yStep; v <= dy1; v += yStep) {
+      svg.append(s('line', { x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v), class: 'grid' }), s('text', { x: m.l - 6, y: Y(v) + 4, 'text-anchor': 'end', class: 'axis' }, fmtNum(v / 1e6)));
     }
-    svg.append(s('text', { x: W - m.r, y: H - 4, 'text-anchor': 'end', class: 'axis' }, 'm²'), s('text', { x: 2, y: 11, class: 'axis' }, 'mil. Kč'));
-    svg.append(s('line', { x1: m.l, x2: W - m.r, y1: Y(n.budget), y2: Y(n.budget), class: 'ref ref--budget' }),
-      s('text', { x: W - m.r - 4, y: Y(n.budget) - 5, 'text-anchor': 'end', class: 'reflabel reflabel--budget' }, `budget ${mil(n.budget, false)}`),
-      s('line', { x1: m.l, x2: W - m.r, y1: Y(n.strop), y2: Y(n.strop), class: 'ref ref--cap' }),
-      s('text', { x: W - m.r - 4, y: Y(n.strop) - 5, 'text-anchor': 'end', class: 'reflabel reflabel--cap' }, `hranice ${mil(n.strop, false)}`));
-    // gone first, picked last, so the interesting points are on top
-    const rank = it => GONE.includes(statusOf(it)) ? 0 : (statusOf(it) === 'zajimavy' || statusOf(it) === 'prohlidka') ? 2 : 1;
-    pts.slice().sort((a, b) => rank(a) - rank(b)).forEach(it => {
-      const st = statusOf(it), r = rank(it);
-      const cls = r === 0 ? 'pt pt--gone' : r === 2 ? 'pt pt--pick' : hasTerrace(it) ? 'pt pt--fill' : 'pt pt--ring';
-      const label = `${it.dispozice || ''}, ${num(it.plocha)} m², ${mil(num(it.cena))} – ${it.lokalita || ''}`;
-      const a = s('a', { href: `#/byt/${it.id}`, class: cls, 'aria-label': label },
-        s('title', null, label),
-        s('circle', { cx: X(num(it.plocha)).toFixed(1), cy: Y(num(it.cena)).toFixed(1), r: 14, class: 'pt__hit' }),
-        s('circle', { cx: X(num(it.plocha)).toFixed(1), cy: Y(num(it.cena)).toFixed(1), r: r === 2 ? 7 : 5.5, class: 'pt__dot' + (st === 'zamitnuto' ? ' pt__dot--rej' : '') }));
-      svg.append(a);
+    svg.append(s('text', { x: W - m.r, y: H - 4, 'text-anchor': 'end', class: 'axis' }, 'm²'), s('text', { x: 2, y: 12, class: 'axis' }, 'mil. Kč'));
+    const ref = (v, cls, label) => {
+      if (v < dy0 || v > dy1) return;
+      svg.append(s('line', { x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v), class: `ref ref--${cls}` }),
+        s('text', { x: W - m.r - 4, y: Y(v) - 5, 'text-anchor': 'end', class: `reflabel reflabel--${cls}` }, label));
+    };
+    ref(n.budget, 'budget', `budget ${mil(n.budget, false)}`);
+    ref(n.strop, 'cap', `hranice ${mil(n.strop, false)}`);
+    if (med) {
+      svg.append(s('line', { x1: X(dx0), y1: Y(med * dx0), x2: X(dx1), y2: Y(med * dx1), class: 'med', 'clip-path': 'url(#plot)' }));
+    }
+    const pos = [];
+    const g = s('g', { 'clip-path': 'url(#plot)' });
+    inWin.slice().sort((a, b) => rank(a, cs.color) - rank(b, cs.color)).forEach(it => {
+      const cx = X(num(it.plocha)), cy = Y(num(it.cena));
+      const c = s('circle', { cx: cx.toFixed(1), cy: cy.toFixed(1), r: 6, class: 'dot ' + dotClass(it, cs.color, med) + (sel.includes(it.id) ? ' is-sel' : '') });
+      c.append(s('title', null, `${it.dispozice || ''}, ${num(it.plocha)} m², ${mil(num(it.cena))} – ${it.lokalita || ''}`));
+      g.append(c);
+      pos.push({ it, cx, cy, c });
+    });
+    svg.append(g);
+    svg.addEventListener('click', ev => {
+      const r = svg.getBoundingClientRect();
+      const px = (ev.clientX - r.left) * (W / r.width), py = (ev.clientY - r.top) * (H / r.height);
+      const R = 24;
+      const near = pos.map(p => ({ p, d: Math.hypot(p.cx - px, p.cy - py) })).filter(x => x.d <= R).sort((a, b) => a.d - b.d);
+      sel = near.slice(0, 12).map(x => x.p.it.id);
+      pos.forEach(p => p.c.classList.toggle('is-sel', sel.includes(p.it.id)));
+      drawSel();
+      if (sel.length) selBox.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'nearest' });
     });
     put(box, svg);
+
+    function drawSel() {
+      if (!sel.length) { put(selBox, h('p', { class: 'hint', text: 'Klepni do grafu na bod nebo do shluku. Byty z toho místa se ukážou tady pod grafem.' })); return; }
+      const items = sel.map(id => store.byty.get(id)).filter(Boolean);
+      put(selBox,
+        h('div', { class: 'sel__head' },
+          h('b', { text: items.length === 1 ? '1 byt v tomhle místě' : `${items.length} ${items.length <= 4 ? 'byty' : 'bytů'} v tomhle místě` }),
+          h('button', { class: 'linkish', type: 'button', onclick: () => { sel = []; pos.forEach(p => p.c.classList.remove('is-sel')); drawSel(); } }, 'Zrušit výběr')),
+        h('div', { class: 'list' }, items.map(it => card(it, n))));
+    }
+    drawSel();
+  }
+
+  /* ---------- Lokality ---------- */
+  function drawLokality() {
+    const n = store.nastaveni;
+    const tab = currentTab();
+    const pool = [...store.byty.values()].filter(it => tab.test(statusOf(it)) && passesBase(it, 'lok'));
+    if (!pool.length) { put(body, h('div', { class: 'empty', text: 'V aktuálním výběru nejsou žádné byty.' })); return; }
+    const groups = new Map();
+    pool.forEach(it => { const k = it.lokalita || ''; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(it); });
+    const rows = [...groups].map(([name, arr]) => {
+      const prices = arr.map(it => num(it.cena)).filter(Boolean);
+      const ratings = arr.map(avgRating).filter(v => v != null);
+      return {
+        name, n: arr.length,
+        inB: prices.filter(c => c <= n.budget).length,
+        med: median(arr.map(kcm2).filter(Boolean)),
+        min: prices.length ? Math.min(...prices) : null,
+        rating: ratings.length ? ratings.reduce((a, b) => a + b, 0) / ratings.length : null,
+        rated: ratings.length
+      };
+    });
+    const by = {
+      kcm2: (a, b) => (a.med ?? 9e15) - (b.med ?? 9e15),
+      budget: (a, b) => b.inB - a.inB || (a.med ?? 9e15) - (b.med ?? 9e15),
+      pocet: (a, b) => b.n - a.n || (a.med ?? 9e15) - (b.med ?? 9e15)
+    }[cs.lokSort] || ((a, b) => 0);
+    // districts with too few flats say little about prices: they go after the others when sorting by price
+    const thin = r => cs.lokSort === 'kcm2' && r.n < LOK_MIN ? 1 : 0;
+    rows.sort((a, b) => (a.name ? 0 : 1) - (b.name ? 0 : 1) || thin(a) - thin(b) || by(a, b));
+    const shown = lokAll ? rows : rows.slice(0, LOK_TOP);
+    const meds = rows.map(r => r.med).filter(Boolean);
+    const lo = Math.min(...meds), hi = Math.max(...meds);
+    const sortSeg = h('div', { class: 'seg seg--sm', role: 'group', 'aria-label': 'Řadit lokality' },
+      h('span', { class: 'win__lbl', text: 'Řadit' }),
+      LOK_SORTS.map(([k, l]) => h('button', { type: 'button', 'aria-pressed': String(cs.lokSort === k), onclick: () => { cs.lokSort = k; saveCs(); draw(); } }, l)));
+    put(body,
+      h('section', { class: 'panel' }, sortSeg,
+        h('p', { class: 'muted small', text: `${rows.length} ${rows.length <= 4 ? 'lokality' : 'lokalit'} z aktuálního výběru. Pruh ukazuje medián ceny za m²${cs.lokSort === 'kcm2' ? `, lokality s méně než ${LOK_MIN} byty jsou až na konci` : ''}. Klepnutím na lokalitu se seznam bytů vyfiltruje jen na ni.` }),
+        h('div', { class: 'loks' }, shown.map(r => h(r.name ? 'button' : 'div', {
+          class: 'lok' + (r.name && view.lok === r.name ? ' is-on' : ''), type: r.name ? 'button' : null,
+          onclick: r.name ? () => { view.lok = r.name; saveView(); nav.go('#/byty'); } : null
+        },
+          h('div', { class: 'lok__top' }, h('span', { class: 'lok__name', text: r.name || 'Lokalita neuvedena' }), h('span', { class: 'lok__n', text: `${r.n} ${r.n === 1 ? 'byt' : r.n <= 4 ? 'byty' : 'bytů'}` })),
+          r.med ? h('div', { class: 'lok__bar', 'aria-hidden': 'true' }, h('i', { style: { width: `${hi > lo ? 25 + 75 * (r.med - lo) / (hi - lo) : 100}%` } })) : null,
+          h('div', { class: 'lok__meta' },
+            r.med ? h('span', { text: `medián ${Math.round(r.med / 1000).toLocaleString('cs-CZ')} tis. Kč/m²` }) : null,
+            h('span', { class: r.inB ? 'good' : '', text: `${r.inB} v budgetu` }),
+            r.min ? h('span', { text: `od ${mil(r.min, false)}` }) : null,
+            r.rating != null ? h('span', { text: `hodnocení ${fmtRating(r.rating)} (${r.rated}×)` }) : null)))),
+        rows.length > LOK_TOP ? h('button', { class: 'btn', type: 'button', onclick: () => { lokAll = !lokAll; draw(); } },
+          lokAll ? `Zobrazit jen prvních ${LOK_TOP}` : `Zobrazit všech ${rows.length} lokalit`) : null));
+  }
+
+  function draw() {
+    drawHead();
+    if (cs.mode === 'lokality') drawLokality(); else drawGraf();
   }
 
   let rT = null;

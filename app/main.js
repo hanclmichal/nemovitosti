@@ -9,8 +9,9 @@ import * as detail from './views/detail.js';
 import * as chart from './views/chart.js';
 import * as add from './views/add.js';
 import * as settings from './views/settings.js';
+import { applyProfile, openProfiles } from './views/profile.js';
 
-export const APP_VERSION = '1.0.0';
+export const APP_VERSION = '1.1.0';
 
 const routes = [
   { re: /^#?\/?$/, view: list, tab: 'byty' },
@@ -109,8 +110,7 @@ async function runSync(manual) {
 export function applyTheme(t) {
   if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
   else document.documentElement.removeAttribute('data-theme');
-  const dark = t === 'dark' || (t !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
-  document.querySelector('meta[name="theme-color"]').setAttribute('content', dark ? '#0e1412' : '#eef2ee');
+  applyProfile();
 }
 
 /* ---------- service worker ---------- */
@@ -144,6 +144,7 @@ async function start() {
   $('#barBack').addEventListener('click', () => back());
   $('#gearBtn').append(icon('gear'));
   $('#syncBtn').addEventListener('click', () => runSync(true));
+  $('#profBtn').addEventListener('click', () => openProfiles());
   window.addEventListener('hashchange', route);
 
   try { await load(); }
@@ -152,7 +153,8 @@ async function start() {
     return;
   }
   setSyncHook(() => runSync(false));
-  onChange(() => { renderSync(); refreshView(); });
+  applyProfile();
+  onChange(() => { applyProfile(); renderSync(); refreshView(); });
   onStatus(() => renderSync());
   renderSync();
   route();

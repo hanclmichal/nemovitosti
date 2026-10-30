@@ -1,5 +1,6 @@
-// "Nastavení": repository connection, who uses this phone, watchdog, appearance, local data.
-import { store, setConn, setKdo, resetLocal, pendingFiles } from '../store.js';
+// "Nastavení": repository connection, profile, watchdog, appearance, local data.
+import { store, setConn, resetLocal, pendingFiles } from '../store.js';
+import { profilePicker } from './profile.js';
 import { sync, testConnection, status } from '../sync.js';
 import { h, put, toast, openSheet, closeSheet, confirmSheet } from '../ui.js';
 import { plural, timeCz, mil } from '../format.js';
@@ -45,17 +46,6 @@ function connectForm(onDone) {
     h('div', { class: 'row-actions' }, btn));
 }
 
-function kdoForm(after) {
-  const input = h('input', { class: 'field', type: 'text', value: store.kdo, placeholder: 'např. Michal', autocomplete: 'given-name' });
-  return h('form', { class: 'form form--inline', onsubmit: async ev => {
-    ev.preventDefault();
-    await setKdo(input.value.trim());
-    toast(input.value.trim() ? `Uloženo: ${input.value.trim()}` : 'Jméno smazáno.');
-    after && after();
-  } }, h('label', { class: 'form__row' }, h('span', { class: 'form__label', text: 'Kdo používá tenhle telefon' }), input),
-    h('button', { class: 'btn', type: 'submit' }, 'Uložit'));
-}
-
 export function render(root, params, nav) {
   nav.setTitle('Nastavení');
   async function draw() {
@@ -77,8 +67,8 @@ export function render(root, params, nav) {
         h('p', { text: 'Aplikace si stáhne byty ze soukromého úložiště na GitHubu a uloží je do telefonu. Funguje pak i bez internetu a změny stavu a poznámek odešle, jakmile bude signál.' }),
         connectForm(() => nav.go('#/byty'))),
         h('section', { class: 'panel' }, h('h2', { text: 'Kdo jsi' }),
-          h('p', { class: 'muted small', text: 'Jméno se ukáže u poznámek a v historii změn, ať víte, kdo co napsal.' }),
-          kdoForm()));
+          h('p', { class: 'muted small', text: 'Profil určuje barvu aplikace, čí hodnocení je tvoje a podpis u poznámek. Přepnout jde kdykoli kolečkem nahoře.' }),
+          profilePicker(() => draw())));
       put(root, box);
       return;
     }
@@ -95,8 +85,8 @@ export function render(root, params, nav) {
         h('button', { class: 'btn', type: 'button', onclick: () => openSheet('Připojení', connectForm(() => { closeSheet(); draw(); })) }, 'Změnit připojení'))));
 
     box.append(h('section', { class: 'panel' }, h('h2', { text: 'Kdo jsi' }),
-      h('p', { class: 'muted small', text: 'Jméno se ukáže u poznámek a v historii změn na GitHubu.' }),
-      kdoForm(draw)));
+      h('p', { class: 'muted small', text: 'Profil určuje barvu aplikace, čí hodnocení je tvoje a podpis u poznámek a v historii změn na GitHubu. Přepnout jde kdykoli kolečkem nahoře.' }),
+      profilePicker(() => draw())));
 
     const m = store.meta, n = store.nastaveni;
     box.append(h('section', { class: 'panel' },

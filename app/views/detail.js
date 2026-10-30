@@ -1,7 +1,7 @@
-// Apartment detail: price and its history, status, shared note, facts and links.
-import { store, updateByt } from '../store.js';
-import { STATUS, STATUS_LABEL, GONE, statusOf, kcm2, tier, priceDrop, hasTerrace, isGone } from '../byty.js';
-import { num, mil, kc, dateCz, timeCz, daysBetween, today } from '../format.js';
+// Apartment detail: price and its history, status, ratings, shared note, facts and links.
+import { store, updateByt, lide } from '../store.js';
+import { STATUS, STATUS_LABEL, GONE, statusOf, kcm2, tier, priceDrop, hasTerrace, isGone, ratingOf, avgRating, fmtRating } from '../byty.js';
+import { num, mil, kc, dateCz, timeCz, daysBetween, today, nowIso } from '../format.js';
 import { h, put, toast, extLink } from '../ui.js';
 
 const safeUrl = u => /^https?:\/\//i.test(String(u || '')) ? String(u) : null;
@@ -16,7 +16,7 @@ export function render(root, params, nav) {
     if (!it || (it.nase || '') === value) return;
     noteSaved.textContent = 'Ukládám…';
     try {
-      await updateByt(id, d => { d.nase = value || null; });
+      await updateByt(id, d => { d.nase = value || null; d.naseUpravil = store.kdo ? { kdo: store.kdo, kdy: nowIso() } : null; });
       noteSaved.textContent = 'Uloženo v telefonu, odešle se při synchronizaci.';
     } catch (e) { noteSaved.textContent = e.message; }
   }
@@ -28,7 +28,26 @@ export function render(root, params, nav) {
         if (GONE.includes(v) && !d.stazenoDne) d.stazenoDne = today();
         if (!GONE.includes(v) && d.stazenoDne) d.stazenoDne = null;
       });
-      toast(`Stav: ${STATUS_LABEL[v]}`);
+      if (v === 'zamitnuto' && !(store.byty.get(id) || {}).nase) {
+        // a rejection should say why: open the note right away
+        requestAnimationFrame(() => {
+          const box = root.querySelector('.note__in');
+          if (!box) return;
+          box.scrollIntoView({ block: 'center' });
+          box.focus({ preventScroll: true });
+        });
+        toast('Zamítnuto. Napiš do poznámky proč, ať to víte i za měsíc.', 4000);
+      } else toast(`Stav: ${STATUS_LABEL[v]}`);
+    } catch (e) { toast(e.message); }
+  }
+
+  async function setRating(jmeno, v) {
+    try {
+      await updateByt(id, d => {
+        const r = d.hodnoceni && typeof d.hodnoceni === 'object' ? { ...d.hodnoceni } : {};
+        if (v == null) delete r[jmeno]; else r[jmeno] = v;
+        d.hodnoceni = r;
+      });
     } catch (e) { toast(e.message); }
   }
 
@@ -66,15 +85,34 @@ export function render(root, params, nav) {
         h('button', { class: `sbtn sbtn--${v}`, type: 'button', 'aria-pressed': String(st === v), onclick: () => { if (st !== v) setStatus(v); } }, l))),
       gone && it.stazenoDne ? h('p', { class: 'muted small', text: `${STATUS_LABEL[st]} ${dateCz(it.stazenoDne)}` }) : null);
 
+    // ratings, one row per person in their colour
+    const people = lide();
+    const avg = avgRating(it);
+    const ratings = h('section', { class: 'panel' },
+      h('div', { class: 'rating__head' }, h('h2', { text: 'Hodnocení' }),
+        avg != null && Object.keys(it.hodnoceni || {}).length > 1 ? h('span', { class: 'muted small', text: `průměr ${fmtRating(avg)}` }) : null),
+      people.map(p => {
+        const val = ratingOf(it, p.jmeno);
+        return h('div', { class: `rating pc--${p.barva}` },
+          h('div', { class: 'rating__head' },
+            h('span', { class: 'rating__who' }, p.jmeno, store.kdo === p.jmeno ? h('span', { class: 'rating__me', text: '(ty)' }) : null),
+            val != null ? h('span', { class: 'rating__val', text: `${val}/10` }) : h('span', { class: 'rating__val rating__val--none', text: 'zatím nehodnoceno' })),
+          h('div', { class: 'rscale', role: 'group', 'aria-label': `Hodnocení ${p.jmeno}` }, Array.from({ length: 10 }, (_, i) => i + 1).map(n =>
+            h('button', { class: 'rbtn' + (val != null && n < val ? ' is-fill' : ''), type: 'button', 'aria-pressed': String(val === n), 'aria-label': `${p.jmeno}: ${n} z 10`,
+              onclick: () => setRating(p.jmeno, val === n ? null : n) }, String(n)))));
+      }),
+      h('p', { class: 'muted small', text: 'Klepnutím na stejné číslo hodnocení zrušíš.' }));
+
     // note
-    noteBox = h('textarea', { class: 'field note__in', rows: '4', placeholder: 'Dojmy, otázky na makléře…', 'aria-label': 'Naše poznámka', oninput: ev => {
+    noteBox = h('textarea', { class: 'field note__in', rows: '4', placeholder: st === 'zamitnuto' ? 'Proč ho nechceme? (např. spíš kancelář, nedoplacená anuita)' : 'Dojmy, otázky na makléře…', 'aria-label': 'Naše poznámka', oninput: ev => {
       clearTimeout(noteTimer);
       noteSaved.textContent = '';
       noteTimer = setTimeout(() => saveNote(ev.target.value), 1200);
     }, onblur: ev => { saveNote(ev.target.value); if (pendingRedraw) setTimeout(draw, 0); } });
     noteBox.value = it.nase || '';
-    noteSaved = h('p', { class: 'muted small', role: 'status', text: it.upravil && it.upravil.kdo ? `Naposledy upravil(a) ${it.upravil.kdo}, ${timeCz(it.upravil.kdy)}` : '' });
-    const note = h('section', { class: 'panel' }, h('h2', { text: 'Naše poznámka' }), noteBox, noteSaved);
+    const sig = it.naseUpravil && it.naseUpravil.kdo ? it.naseUpravil : null;
+    noteSaved = h('p', { class: 'muted small', role: 'status', text: sig && it.nase ? `Naposledy upravil(a) ${sig.kdo}, ${timeCz(sig.kdy)}` : '' });
+    const note = h('section', { class: 'panel' }, h('h2', { text: st === 'zamitnuto' ? 'Proč jsme ho zamítli' : 'Naše poznámka' }), noteBox, noteSaved);
 
     // facts
     const facts = [];
@@ -107,7 +145,7 @@ export function render(root, params, nav) {
     const linkBox = links.length ? h('section', { class: 'panel' }, h('h2', { text: 'Odkazy' }), h('div', { class: 'links' }, links),
       h('p', { class: 'muted small', text: 'Údaje jsou z upozornění portálů a agregátorů. Před prohlídkou je ověř v původním inzerátu.' })) : null;
 
-    put(root, h('div', { class: 'detail' }, price, status, note, info, linkBox));
+    put(root, h('div', { class: 'detail' }, price, status, ratings, note, info, linkBox));
   }
 
   draw();

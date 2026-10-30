@@ -7,8 +7,18 @@ export const DEFAULT_NASTAVENI = {
   budget: 12000000,
   mirneNad: 13500000,
   strop: 15500000,
-  kriteria: []
+  kriteria: [],
+  lide: [{ jmeno: 'Míša', barva: 'zelena' }, { jmeno: 'Zuzka', barva: 'ruzova' }]
 };
+
+const BARVY = ['zelena', 'ruzova'];
+/** Profiles (people who rate): [{ jmeno, barva }] from nastaveni.json. */
+export function lide() {
+  const l = Array.isArray(store.nastaveni.lide) ? store.nastaveni.lide : DEFAULT_NASTAVENI.lide;
+  return l.map((p, i) => typeof p === 'string' ? { jmeno: p, barva: BARVY[i % 2] } : { jmeno: String(p.jmeno || ''), barva: BARVY.includes(p.barva) ? p.barva : BARVY[i % 2] })
+    .filter(p => p.jmeno);
+}
+export const profil = () => lide().find(p => p.jmeno === store.kdo) || null;
 
 const listeners = new Set();
 export const store = {

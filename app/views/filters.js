@@ -1,6 +1,6 @@
 // Filter sheet shared by the list and the chart: layout, district, source, terrace.
 import { store } from '../store.js';
-import { view, saveView, resetFilters, filterCount, currentTab, statusOf, passesBase, dispKey, DISP, DISP_LABEL } from '../byty.js';
+import { view, saveView, resetFilters, filterCount, currentTab, statusOf, passesBase, dispKey, DISP, DISP_LABEL, HOD } from '../byty.js';
 import { h, openSheet, closeSheet } from '../ui.js';
 
 export function filterButton(onChange) {
@@ -40,6 +40,9 @@ export function openFilters(onChange) {
           }))),
       h('label', { class: 'form__row' }, h('span', { class: 'form__label', text: 'Lokalita' }), lok),
       h('label', { class: 'form__row' }, h('span', { class: 'form__label', text: 'Zdroj' }), dev),
+      h('label', { class: 'form__row' }, h('span', { class: 'form__label', text: 'Hodnocení' }),
+        h('select', { class: 'field', id: 'f-hod', onchange: ev => { view.hod = ev.target.value; changed(); } },
+          HOD.map(([v, l]) => h('option', { value: v, text: v === 'cekam' && store.kdo ? `Čeká na hodnocení: ${store.kdo}` : l, selected: v === view.hod ? true : null })))),
       h('label', { class: 'switch' },
         h('input', { type: 'checkbox', checked: view.ter ? true : null, onchange: ev => { view.ter = ev.target.checked; changed(); } }),
         h('span', { class: 'switch__t' }, h('b', { text: 'Jen s terasou' }))),

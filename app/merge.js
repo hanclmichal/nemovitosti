@@ -6,6 +6,7 @@
 import { serialize } from './format.js';
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const isObj = v => !!v && typeof v === 'object' && !Array.isArray(v);
 const parse = t => { try { const o = JSON.parse(t); return o && typeof o === 'object' && !Array.isArray(o) ? o : null; } catch (e) { return null; } };
 
 const UNION = {
@@ -38,6 +39,7 @@ export function mergeObj(b, l, r) {
     if (same(r[k], b[k])) { out[k] = l[k]; continue; }
     // both sides changed the field differently
     if (UNION[k] && Array.isArray(l[k]) && Array.isArray(r[k])) out[k] = union(k, r[k], l[k]);
+    else if (isObj(l[k]) && isObj(r[k])) out[k] = mergeObj(isObj(b[k]) ? b[k] : {}, l[k], r[k]);  // e.g. ratings from two phones
     else out[k] = l[k];
   }
   return out;
