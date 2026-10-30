@@ -67,7 +67,7 @@ export function render(root, params, nav) {
         h('p', { text: 'Aplikace si stáhne byty ze soukromého úložiště na GitHubu a uloží je do telefonu. Funguje pak i bez internetu a změny stavu a poznámek odešle, jakmile bude signál.' }),
         connectForm(() => nav.go('#/byty'))),
         h('section', { class: 'panel' }, h('h2', { text: 'Kdo jsi' }),
-          h('p', { class: 'muted small', text: 'Profil určuje barvu aplikace, čí hodnocení je tvoje a podpis u poznámek. Přepnout jde kdykoli kolečkem nahoře.' }),
+          h('p', { class: 'muted small', text: 'Profil určuje barvu aplikace, čí hodnocení je tvoje a podpis u poznámek. Přepnout jde kdykoli tlačítkem s písmenem v horní liště.' }),
           profilePicker(() => draw())));
       put(root, box);
       return;
@@ -85,7 +85,7 @@ export function render(root, params, nav) {
         h('button', { class: 'btn', type: 'button', onclick: () => openSheet('Připojení', connectForm(() => { closeSheet(); draw(); })) }, 'Změnit připojení'))));
 
     box.append(h('section', { class: 'panel' }, h('h2', { text: 'Kdo jsi' }),
-      h('p', { class: 'muted small', text: 'Profil určuje barvu aplikace, čí hodnocení je tvoje a podpis u poznámek a v historii změn na GitHubu. Přepnout jde kdykoli kolečkem nahoře.' }),
+      h('p', { class: 'muted small', text: 'Profil určuje barvu aplikace, čí hodnocení je tvoje a podpis u poznámek a v historii změn na GitHubu. Přepnout jde kdykoli tlačítkem s písmenem v horní liště.' }),
       profilePicker(() => draw())));
 
     const m = store.meta, n = store.nastaveni;

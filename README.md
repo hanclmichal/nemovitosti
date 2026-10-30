@@ -11,7 +11,7 @@ Adresa: https://hanclmichal.github.io/nemovitosti/
 - **Byty:** souhrn (aktivní nabídky, kolik je v budgetu, medián ceny za m², nové za 7 dní), záložky podle stavu
   (aktivní, vybrané, zamítnuté, stažené a prodané, vše), hledání podle ulice, lokality nebo projektu,
   filtry (dispozice, lokalita, od developerů, jen s terasou) a řazení.
-- **Profily:** Míša (zelený) a Zuzka (růžová), přepínají se kolečkem v horní liště. Profil určuje barvu aplikace,
+- **Profily:** Míša (zelený) a Zuzka (růžová), přepínají se tlačítkem s písmenem v horní liště. Profil určuje barvu aplikace,
   čí hodnocení je „moje“ a podpis u poznámek i v historii změn.
 - **Detail bytu:** cena a její historie, zlevnění, cena vůči budgetu, stav (nový, zajímavý, prohlídka, rezervace,
   zamítnuto, stažený, prodáno), hodnocení 1–10 zvlášť od Míši a Zuzky, společná poznámka s podpisem, údaje
